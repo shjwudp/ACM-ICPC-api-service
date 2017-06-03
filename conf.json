@@ -1,0 +1,15 @@
+{
+    "Server": {
+        "JWTSecret": "terceSTWJ",
+        "Port": "8080",
+        "Admin": {
+            "Account": "admin",
+            "Password": "ElPsyCongroo"
+        }
+    },
+    "Storage": {
+        "Dirver": "sqlite3",
+        "Config": "sqlite3.db"
+    },
+    "ResultsXMLPath": "results.xml"
+}
