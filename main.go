@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,15 +12,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 
 	"github.com/shjwudp/ACM-ICPC-api-service/model"
 
+	"database/sql"
 	jwt_lib "github.com/dgrijalva/jwt-go"
 	jwt_request "github.com/dgrijalva/jwt-go/request"
-	"github.com/go-xorm/core"
-	"github.com/go-xorm/xorm"
 	_ "github.com/mattn/go-sqlite3"
 	"gopkg.in/gin-gonic/gin.v1"
 	"strings"
@@ -28,7 +27,6 @@ import (
 var usageStr = `
 Usage: ACM-ICPC-api-service --config <file>		Configuration file path
 `
-var dbEngine *xorm.Engine
 
 // usage will print out the flag options for the server.
 func usage() {
@@ -37,37 +35,25 @@ func usage() {
 }
 
 // Config is configuration struct
-var Config = struct {
-	Server struct {
-		JWTSecret string
-		Port      string
-		Admin     struct {
-			Account  string
-			Password string
-		}
+var Config *model.Configuration
+
+// Env is all handlers common environment
+type Env struct {
+	db model.Datastore
+}
+
+func (env *Env) initAdmin(account, password string) {
+	admin := model.User{
+		Account:  account,
+		Password: password,
+		Role:     "admin",
 	}
-	// use sqlite3
-	Storage struct {
-		Dirver string
-		Config string
-	}
-	ResultsXMLPath string
-}{}
-
-func loadConfJSON(confPath string) error {
-	configFile, err := os.Open(confPath)
-
-	if err != nil {
-		return err
-	}
-
-	decoder := json.NewDecoder(configFile)
-	err = decoder.Decode(&Config)
-
-	return err
+	env.db.SaveUser(admin)
 }
 
 func main() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+
 	var confPath string
 	flag.StringVar(&confPath, "config", "", "Configuration file path.")
 	flag.Parse()
@@ -78,193 +64,162 @@ func main() {
 		usage()
 	}
 
-	var err = loadConfJSON(confPath)
+	var err error
+	Config, err = model.ConfigurationLoad(confPath)
 	if err != nil {
-		log.Fatal("Load conf failed")
+		log.Fatal("Load conf failed with", err)
 	}
 
-	log.SetFlags(log.Lshortfile | log.LstdFlags)
-	err = setupDB(Config.Storage.Dirver, Config.Storage.Config)
+	db, err := model.OpenDB(Config.Storage.Dirver, Config.Storage.Config)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Open db failed with", err)
 	}
-	err = initAdmin(Config.Server.Admin.Account, Config.Server.Admin.Password)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// go func() {
-	// 	updateContestStanding("./results.xml")
-	// 	time.Sleep(time.Duration(1) * time.Second)
-	// }()
+
+	env := &Env{db}
+	env.initAdmin(Config.Server.Admin.Account, Config.Server.Admin.Password)
+	go func() {
+		env.updateContestStanding("./results.xml")
+		time.Sleep(time.Duration(1) * time.Second)
+	}()
 
 	gin.SetMode(gin.TestMode)
-	GetMainEngine(Config.Server.JWTSecret).Run(":" + Config.Server.Port)
+	GetMainEngine(env, Config.Server.JWTSecret).Run(":" + Config.Server.Port)
 }
 
-func initAdmin(account, password string) error {
-	admin := model.User{
-		Account:  account,
-		Role:     "admin",
-		Password: password,
-	}
-	affected, err := dbEngine.Id(account).AllCols().Update(&admin)
+func (env *Env) getContestStanding(c *gin.Context) {
+	kv, err := env.db.GetKV("ContestStanding")
 	if err != nil {
-		return err
+		var errMsg = fmt.Sprint("Get ContestStanding failed with", err)
+		c.JSON(500, gin.H{"message": errMsg})
 	}
-	if affected == 0 {
-		_, err = dbEngine.Insert(&admin)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func setupDB(dirver, config string) error {
-	var err error
-	dbEngine, err = xorm.NewEngine(dirver, config)
-	if err != nil {
-		return err
-	}
-	dbEngine.ShowSQL(true)
-	err = dbEngine.Sync2(
-		new(model.BallonStatus),
-		new(model.User),
-		new(model.KVstore),
-	)
-	return err
-}
-
-func getContestStanding(c *gin.Context) {
-	var kv model.KVstore
-	dbEngine.Where("key = ?", "ContestStanding").Get(&kv)
 	c.String(200, string(kv.Value))
 }
 
-func getBallonStatus(c *gin.Context) {
-	// update ballon status
-	var kv model.KVstore
-	dbEngine.Where("key = ?", "ContestStanding").Get(&kv)
+func (env *Env) listBallonStatus(c *gin.Context) {
+	// update BallonStatus first
+	kv, err := env.db.GetKV("ContestStanding")
+	if err != nil {
+		var errMsg = fmt.Sprint("Get ContestStanding failed with", err)
+		c.JSON(500, gin.H{"message": errMsg})
+	}
 
 	var cs model.ContestStanding
-	var err = json.Unmarshal(kv.Value, &cs)
+	err = json.Unmarshal(kv.Value, &cs)
 	if err != nil {
-		c.JSON(500, gin.H{"message": "Internel Server Error"})
+		var errMsg = fmt.Sprint("Json Unmarshal failed with", err)
+		c.JSON(500, gin.H{"message": errMsg})
+		return
 	}
 
+	var results []map[string]interface{}
 	for _, t := range cs.TeamStandings {
-		teamKey := t.TeamKey
 		for _, p := range t.ProblemSummaryInfos {
-			problemIndex := p.Index
-			solutionTime := p.SolutionTime
-			status := "UnSolved"
-			if p.IsFirstSolved {
-				status = "FirstBlood"
-			} else if p.IsSolved {
-				status = "Solved"
-			}
-
-			if status == "UnSolved" {
+			if !p.IsSolved {
 				continue
 			}
-
-			var bs model.BallonStatus
-			has, _ := dbEngine.Id(core.PK{teamKey, p.Index}).Get(&bs)
-
-			if has {
-				dbEngine.Update(&bs, model.BallonStatus{
-					Status:       status,
-					ProblemIndex: problemIndex,
-				})
-			} else {
-				var user model.User
-				dbEngine.Where("TeamKey = ?", teamKey).Get(&user)
-				bs = model.BallonStatus{
-					TeamKey:      teamKey,
-					ProblemIndex: problemIndex,
-					TeamName:     user.DisplayName,
-					Status:       status,
-					SolutionTime: solutionTime,
-					IsMarked:     false,
-					SeatID:       user.SeatID,
-				}
-				dbEngine.Insert(&bs)
+			team, err := env.db.GetUserTeamKey(t.TeamKey)
+			if err != nil {
+				log.Println("GetUserTeamKey failed with", err)
+				continue
 			}
+			bs, err := env.db.GetBallonStatus(t.TeamKey, p.Index)
+			if err == sql.ErrNoRows {
+				bs = &model.BallonStatus{
+					TeamKey:      t.TeamKey,
+					ProblemIndex: p.Index,
+					IsMarked:     false,
+				}
+			} else if err != nil {
+				errMsg := fmt.Sprint("GetBallonStatus failed with", err)
+				c.JSON(500, gin.H{"message": errMsg})
+				return
+			}
+			results = append(results, map[string]interface{}{
+				"TeamKey":       t.TeamKey,
+				"ProblemIndex":  p.Index,
+				"SolutionTime":  p.SolutionTime,
+				"SeatID":        team.SeatID,
+				"IsSolved":      p.IsSolved,
+				"IsFirstSolved": p.IsFirstSolved,
+				"IsMarked":      bs.IsMarked,
+			})
 		}
 	}
-	var results []model.BallonStatus
-	dbEngine.Find(&results)
 	data, _ := json.Marshal(results)
 	c.String(http.StatusOK, string(data))
 }
 
-func patchBallonStatus(c *gin.Context) {
+func (env *Env) patchBallonStatus(c *gin.Context) {
 	var req struct {
 		TeamKey      string `json:"TeamKey" binding:"required"`
 		ProblemIndex int    `json:"ProblemIndex" binding:"required"`
 		Action       string `json:"action" binding:"required"`
 	}
-	if c.BindJSON(&req) == nil {
+	err := c.BindJSON(&req)
+	if err == nil {
 		log.Println(req)
 		if req.Action != "mark" {
-			c.JSON(400, gin.H{"message": fmt.Sprintf("No such action=%s", req.Action)})
+			errMsg := fmt.Sprintf("No such action=%s", req.Action)
+			c.JSON(400, gin.H{"message": errMsg})
 			return
 		}
-		var bs model.BallonStatus
-		has, err := dbEngine.Id(core.PK{req.TeamKey, req.ProblemIndex}).Get(&bs)
+		err := env.db.SaveBallonStatus(model.BallonStatus{
+			TeamKey:      req.TeamKey,
+			ProblemIndex: req.ProblemIndex,
+			IsMarked:     true,
+		})
 		if err != nil {
-			log.Println(err)
-		}
-		if has {
-			affected, err := dbEngine.
-				Id(core.PK{req.TeamKey, req.ProblemIndex}).
-				Update(&model.BallonStatus{IsMarked: true})
-			if err != nil {
-				log.Println(err)
-			}
-			c.JSON(200, gin.H{"affected": affected})
+			errMsg := fmt.Sprintf("No such action=%s", req.Action)
+			c.JSON(400, gin.H{"message": errMsg})
 			return
 		}
-		c.JSON(400, gin.H{"message": fmt.Sprintf("No resource.PK{%s, %d}", req.TeamKey, req.ProblemIndex)})
+		c.JSON(200, gin.H{"message": "OK"})
 		return
 	}
-	c.JSON(400, gin.H{"message": "Invalid Request."})
+	c.JSON(400, gin.H{"message": fmt.Sprint("BindJSON failed with", err)})
 }
 
 func postPrinter(c *gin.Context) {
 	var requestJSON struct {
 		PrintContent string `json:"PrintContent" binding:"required"`
 	}
-	if c.BindJSON(&requestJSON) == nil {
+	err := c.BindJSON(&requestJSON)
+	if err == nil {
 		log.Println("PrintContent:", requestJSON.PrintContent)
-		c.JSON(200, gin.H{"status": "OK"})
-	} else {
-		c.JSON(401, gin.H{"message": "Invalid Request"})
+		c.JSON(200, gin.H{"message": "OK"})
+		return
 	}
+	errMsg := fmt.Sprint("BindJSON failed with", err)
+	c.JSON(400, gin.H{"message": errMsg})
 }
 
-func getParticipant(c *gin.Context) {
-	var results []model.User
-	dbEngine.Find(&results)
-	data, err := json.Marshal(results)
+func (env *Env) getParticipant(c *gin.Context) {
+	users, err := env.db.ListUser()
 	if err != nil {
-		c.JSON(501, gin.H{"message": "Internal Server Error."})
+		errMsg := fmt.Sprint("List User failed with", err)
+		c.JSON(500, gin.H{"message": errMsg})
+		return
+	}
+	data, err := json.Marshal(users)
+	if err != nil {
+		errMsg := fmt.Sprint("List User failed with", err)
+		c.JSON(500, gin.H{"message": errMsg})
+		return
 	}
 	c.String(http.StatusOK, string(data))
 }
 
-func postParticipant(c *gin.Context) {
+func (env *Env) postParticipant(c *gin.Context) {
 	var err error
 	file, header, err := c.Request.FormFile("uploadFile")
 	if err != nil {
-		log.Println(err)
-		c.JSON(400, gin.H{"error": err.Error()})
+		errMsg := fmt.Sprint("Get uploadFile failed with", err)
+		c.JSON(400, gin.H{"message": errMsg})
 		return
 	}
 	filename := header.Filename
 	log.Println("filename : ", filename)
 
-	var allAffected int64
 	titleMap := make(map[string]int)
 	r := csv.NewReader(file)
 	r.Comma = '\t'
@@ -276,7 +231,8 @@ func postParticipant(c *gin.Context) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
+			errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
+			c.JSON(400, gin.H{"message": errMsg})
 			return
 		}
 		if lineNo == 1 {
@@ -285,67 +241,71 @@ func postParticipant(c *gin.Context) {
 			}
 			log.Println(titleMap)
 			if _, ok := titleMap["account"]; !ok {
-				c.JSON(400, gin.H{"error": fmt.Sprintf("File Format Error. LineNo=%d.", lineNo)})
+				errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
+				c.JSON(400, gin.H{"message": errMsg})
 				return
 			}
 			if _, ok := titleMap["site"]; !ok {
-				c.JSON(400, gin.H{"error": fmt.Sprintf("File Format Error. LineNo=%d.", lineNo)})
+				errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
+				c.JSON(400, gin.H{"message": errMsg})
 				return
 			}
 		} else {
 			if len(A) != len(titleMap) {
-				c.JSON(400, gin.H{"error": fmt.Sprintf("File Format Error. LineNo=%d.", lineNo)})
+				errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
+				c.JSON(400, gin.H{"message": errMsg})
 				return
 			}
-			p := model.User{
+			u := model.User{
 				Account: A[titleMap["account"]],
 				TeamKey: strings.ToUpper(A[titleMap["site"]] + A[titleMap["account"]]),
 			}
 			if i, ok := titleMap["password"]; ok {
-				p.Password = A[i]
+				u.Password = A[i]
 			}
 			if i, ok := titleMap["displayname"]; ok {
-				p.DisplayName = A[i]
+				u.DisplayName = A[i]
 			}
 			if i, ok := titleMap["nickname"]; ok {
-				p.NickName = A[i]
+				u.NickName = A[i]
 			}
 			if i, ok := titleMap["school"]; ok {
-				p.School = A[i]
+				u.School = A[i]
 			}
 			if i, ok := titleMap["isstar"]; ok {
-				p.IsStar = A[i]
+				u.IsStar = A[i]
 			}
 			if i, ok := titleMap["isgirl"]; ok {
-				p.IsGirl = A[i]
+				u.IsGirl = A[i]
 			}
 			if i, ok := titleMap["seatid"]; ok {
-				p.SeatID = A[i]
+				u.SeatID = A[i]
 			}
 			if i, ok := titleMap["coach"]; ok {
-				p.Coach = A[i]
+				u.Coach = A[i]
 			}
 			if i, ok := titleMap["player1"]; ok {
-				p.Player1 = A[i]
+				u.Player1 = A[i]
 			}
 			if i, ok := titleMap["player2"]; ok {
-				p.Player2 = A[i]
+				u.Player2 = A[i]
 			}
 			if i, ok := titleMap["player3"]; ok {
-				p.Player3 = A[i]
+				u.Player3 = A[i]
 			}
-			affected, _ := dbEngine.Id(p.Account).AllCols().Update(&p)
-			if affected == 0 {
-				affected, _ = dbEngine.Insert(&p)
+			err := env.db.SaveUser(u)
+			if err != nil {
+				errMsg := fmt.Sprint("Saved user failed with", err)
+				c.JSON(400, gin.H{"message": errMsg})
+				return
 			}
-			allAffected += affected
 		}
 		lineNo++
 	}
-	c.JSON(200, gin.H{"affected": allAffected})
+	c.JSON(200, gin.H{"message": "OK"})
 }
 
-func genPostAuthenticate(jwtSecret string) func(*gin.Context) {
+func (env *Env) genPostAuthenticate(jwtSecret string) func(*gin.Context) {
 	return func(c *gin.Context) {
 		var requestJSON struct {
 			Account  string `json:"account" binding:"required"`
@@ -354,16 +314,13 @@ func genPostAuthenticate(jwtSecret string) func(*gin.Context) {
 		log.Println(c.Request)
 		if c.BindJSON(&requestJSON) == nil {
 			log.Println("requestJSON :", requestJSON)
-			var user model.User
-			has, err := dbEngine.
-				Id(requestJSON.Account).
-				Cols("Account", "Role", "Password").
-				Get(&user)
+			user, err := env.db.GetUserAccount(requestJSON.Account)
 			if err != nil {
-				c.JSON(500, gin.H{"message": "Internal Server Error"})
+				errMsg := fmt.Sprint("Get User failed with", err)
+				c.JSON(500, gin.H{"message": errMsg})
+				return
 			}
-			log.Println(has, user.Password, requestJSON.Password, user.Password == requestJSON.Password)
-			if has && (user.Password == requestJSON.Password) {
+			if user.Password == requestJSON.Password {
 				log.Println("user :", user)
 				// Create the token
 				token := jwt_lib.New(jwt_lib.GetSigningMethod("HS256"))
@@ -391,7 +348,7 @@ func genPostAuthenticate(jwtSecret string) func(*gin.Context) {
 // JWTAuthMiddleware : JWT Authorization Verification
 func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, err := jwt_request.ParseFromRequest(
+		token, err := jwt_request.ParseFromRequest(
 			c.Request,
 			jwt_request.OAuth2Extractor,
 			func(token *jwt_lib.Token) (interface{}, error) {
@@ -399,6 +356,8 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 				return b, nil
 			},
 		)
+
+		c.Set("token", token)
 		if err != nil {
 			c.AbortWithStatus(401)
 		}
@@ -406,77 +365,120 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 }
 
 // CORSMiddleware : CORS Middleware
-func CORSMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Writer.Header().Set("Content-Type", "application/json")
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-		if c.Request.Method == "OPTIONS" {
-			log.Println("options")
-			c.AbortWithStatus(200)
-			return
-		}
-		// c.Next()
+func CORSMiddleware(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH")
+	c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+	if c.Request.Method == "OPTIONS" {
+		log.Println("options")
+		c.AbortWithStatus(200)
+		return
 	}
+	c.Next()
+}
+
+var level2Role = map[string]bool{
+	"normal": true,
+}
+
+var level1Role = map[string]bool{
+	"volunteer": true,
+}
+
+var level0Role = map[string]bool{
+	"admin": true,
+}
+
+func level1PermissionMiddleware(c *gin.Context) {
+	token, has := c.Get("token")
+	if !has {
+		c.AbortWithError(500, errors.New("No token in the c.Context"))
+		return
+	}
+	role, ok := token.(*jwt_lib.Token).Claims.(jwt_lib.MapClaims)["Role"]
+	if !ok {
+		c.AbortWithError(500, errors.New("No Role in token"))
+		return
+	}
+	if _, ok := level0Role[role.(string)]; ok {
+		c.Next()
+		return
+	}
+	if _, ok := level1Role[role.(string)]; ok {
+		c.Next()
+		return
+	}
+	c.AbortWithError(403, errors.New("No Permission"))
+}
+
+func level0PermissionMiddleware(c *gin.Context) {
+	token, has := c.Get("token")
+	if !has {
+		c.AbortWithError(500, errors.New("No token in the c.Context"))
+		return
+	}
+	role, ok := token.(*jwt_lib.Token).Claims.(jwt_lib.MapClaims)["Role"]
+	if !ok {
+		c.AbortWithError(500, errors.New("No Role in token"))
+		return
+	}
+	if _, ok := level0Role[role.(string)]; ok {
+		c.Next()
+		return
+	}
+	c.AbortWithError(403, errors.New("No Permission"))
 }
 
 // GetMainEngine : Main Engine
-func GetMainEngine(jwtSecret string) *gin.Engine {
-	gin.SetMode(gin.TestMode)
+func GetMainEngine(env *Env, jwtSecret string) *gin.Engine {
 	router := gin.Default()
 
-	router.Use(CORSMiddleware())
+	router.Use(CORSMiddleware)
 
 	api := router.Group("/api")
 	{
-		postAuthenticate := genPostAuthenticate(jwtSecret)
+		postAuthenticate := env.genPostAuthenticate(jwtSecret)
 		api.POST("/authenticate", postAuthenticate)
 
 		authorized := api.Group("/authorized")
 		authorized.Use(JWTAuthMiddleware(jwtSecret))
 		{
-			authorized.GET("/contest-standing", getContestStanding)
-			authorized.GET("/ballon-status", getBallonStatus)
-			authorized.PATCH("/ballon-status", patchBallonStatus)
+			authorized.GET("/contest-standing", env.getContestStanding)
 			authorized.POST("/printer", postPrinter)
-			authorized.GET("/participant", getParticipant)
-			authorized.POST("/participant", postParticipant)
+			level1 := authorized.Group("/", level1PermissionMiddleware)
+			{
+				level1.GET("/ballon-status", env.listBallonStatus)
+				level1.PATCH("/ballon-status", env.patchBallonStatus)
+				level0 := authorized.Group("/", level0PermissionMiddleware)
+				{
+					level0.GET("/participant", env.getParticipant)
+					level0.POST("/participant", env.postParticipant)
+				}
+			}
+			// authorized.GET("/ballon-status", env.listBallonStatus)
+			// authorized.PATCH("/ballon-status", env.patchBallonStatus)
+			// authorized.GET("/participant", env.getParticipant)
+			// authorized.POST("/participant", env.postParticipant)
 		}
 	}
 	return router
 }
 
-func updateContestStanding(resultsXMLPath string) {
-	newCS, err := model.ParseResultXML(resultsXMLPath)
+func (env *Env) updateContestStanding(resultsXMLPath string) {
+	cs, err := model.ParseResultXML(resultsXMLPath)
 	if err != nil {
-		log.Println(err)
+		log.Println("ParseResultXML failed with", err)
 		return
 	}
-	b, _ := json.Marshal(newCS)
-	newKV := model.KVstore{
+	b, _ := json.Marshal(cs)
+	kv := model.KV{
 		Key:   "ContestStanding",
 		Value: b,
 	}
-	dbEngine.Id("ContestStanding").Update(&newCS)
-	var oldKV model.KVstore
-	has, err := dbEngine.Id("ContestStanding").Get(&oldKV)
+	err = env.db.SaveKV(kv)
 	if err != nil {
-		log.Println(err)
+		log.Println("SaveKV failed with", err)
 		return
-	}
-	if has {
-		// TODO: check diff
-		_, err := dbEngine.Id("ContestStanding").Update(&newKV)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	} else {
-		_, err := dbEngine.Insert(newKV)
-		if err != nil {
-			log.Println(err)
-			return
-		}
 	}
 }
