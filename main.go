@@ -433,6 +433,10 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 				return b, nil
 			},
 		)
+		if err != nil {
+			c.AbortWithStatus(401)
+			return
+		}
 
 		c.Set("token", token)
 		account, ok := token.Claims.(jwt_lib.MapClaims)["Account"]
@@ -447,11 +451,6 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 			return
 		}
 		c.Set("role", role)
-
-		if err != nil {
-			c.AbortWithStatus(401)
-			return
-		}
 		c.Next()
 	}
 }
