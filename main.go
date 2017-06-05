@@ -1,27 +1,26 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	jwt_lib "github.com/dgrijalva/jwt-go"
+	jwt_request "github.com/dgrijalva/jwt-go/request"
+	gin_gzip "github.com/gin-contrib/gzip"
+	"github.com/gin-gonic/gin"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/shjwudp/ACM-ICPC-api-service/model"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"time"
-
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
-
-	"github.com/shjwudp/ACM-ICPC-api-service/model"
-
-	"database/sql"
-	jwt_lib "github.com/dgrijalva/jwt-go"
-	jwt_request "github.com/dgrijalva/jwt-go/request"
-	_ "github.com/mattn/go-sqlite3"
-	"gopkg.in/gin-gonic/gin.v1"
+	"os/exec"
 	"strings"
+	"time"
 )
 
 var usageStr = `
@@ -39,7 +38,8 @@ var Config *model.Configuration
 
 // Env is all handlers common environment
 type Env struct {
-	db model.Datastore
+	db         model.Datastore
+	printQueue chan int64
 }
 
 func (env *Env) initAdmin(account, password string) {
@@ -49,6 +49,50 @@ func (env *Env) initAdmin(account, password string) {
 		Role:     "admin",
 	}
 	env.db.SaveUser(admin)
+}
+
+func (env *Env) sendToPrint(printerName string) {
+	errorHandler := func(id int64, err error) {
+		log.Println(err)
+		env.printQueue <- id
+	}
+
+	var id int64
+	ok := true
+	for ok {
+		if id, ok = <-env.printQueue; ok {
+			p, err := env.db.GetPrintCode(id)
+			if err != nil {
+				errorHandler(id, fmt.Errorf("GetPrintCode failed with %s", err))
+				continue
+			}
+			u, err := env.db.GetUserAccount(p.Account)
+			if err != nil {
+				errorHandler(id, fmt.Errorf("GetUserAccount failed with %s", err))
+				continue
+			}
+
+			cmd := exec.Command("lp",
+				"-d", printerName,
+				"-t", u.DisplayName+"-"+u.SeatID,
+				"-o", "prettyprint",
+				"-o", "Page-left=36",
+				"-o", "Page-right=36",
+				"-o", "Page-top=36",
+				"-o", "Page-bottom=36")
+			cmd.Stdin = strings.NewReader(p.Code)
+			err = cmd.Run()
+			if err != nil {
+				errorHandler(id, fmt.Errorf("Run cmd lp failed with %s", err))
+				continue
+			}
+			p.IsDone = true
+			err = env.db.UpdatePrintCode(*p)
+			if err != nil {
+				errorHandler(id, fmt.Errorf("Run cmd lp failed with %s", err))
+			}
+		}
+	}
 }
 
 func main() {
@@ -75,15 +119,33 @@ func main() {
 		log.Fatal("Open db failed with", err)
 	}
 
-	env := &Env{db}
+	// init env
+	env := &Env{
+		db:         db,
+		printQueue: make(chan int64, Config.Printer.QueueSize),
+	}
+	// init admin
 	env.initAdmin(Config.Server.Admin.Account, Config.Server.Admin.Password)
+	// start a goruntine to update ContestStanding
 	go func() {
-		env.updateContestStanding("./results.xml")
-		time.Sleep(time.Duration(1) * time.Second)
+		for {
+			env.updateContestStanding("./results.xml")
+			time.Sleep(time.Duration(1) * time.Second)
+		}
 	}()
+	// start a group of goruntine to deal with print task
+	for _, name := range Config.Printer.PinterNameList {
+		go env.sendToPrint(name)
+	}
 
-	gin.SetMode(gin.TestMode)
-	GetMainEngine(env, Config.Server.JWTSecret).Run(":" + Config.Server.Port)
+	// gin.SetMode(gin.TestMode)
+	gin.SetMode(gin.ReleaseMode)
+	router := GetMainEngine(env, Config.Server.JWTSecret)
+	s := &http.Server{
+		Addr:    Config.Server.Port,
+		Handler: router,
+	}
+	s.ListenAndServe()
 }
 
 func (env *Env) getContestStanding(c *gin.Context) {
@@ -119,7 +181,7 @@ func (env *Env) listBallonStatus(c *gin.Context) {
 			}
 			team, err := env.db.GetUserTeamKey(t.TeamKey)
 			if err != nil {
-				log.Println("GetUserTeamKey failed with", err)
+				log.Printf("GetUserTeamKey %s failed with %s\n", t.TeamKey, err)
 				continue
 			}
 			bs, err := env.db.GetBallonStatus(t.TeamKey, p.Index)
@@ -179,18 +241,26 @@ func (env *Env) patchBallonStatus(c *gin.Context) {
 	c.JSON(400, gin.H{"message": fmt.Sprint("BindJSON failed with", err)})
 }
 
-func postPrinter(c *gin.Context) {
+func (env *Env) postPrinter(c *gin.Context) {
 	var requestJSON struct {
 		PrintContent string `json:"PrintContent" binding:"required"`
 	}
 	err := c.BindJSON(&requestJSON)
-	if err == nil {
-		log.Println("PrintContent:", requestJSON.PrintContent)
-		c.JSON(200, gin.H{"message": "OK"})
+	if err != nil {
+		errMsg := fmt.Sprint("BindJSON failed with", err)
+		c.JSON(400, gin.H{"message": errMsg})
 		return
 	}
-	errMsg := fmt.Sprint("BindJSON failed with", err)
-	c.JSON(400, gin.H{"message": errMsg})
+
+	account, _ := c.Get("account")
+	p, err := env.db.SavePrintCode(account.(string), requestJSON.PrintContent)
+	if err != nil {
+		errMsg := fmt.Sprint("SavePrintCode failed with", err)
+		c.JSON(500, gin.H{"message": errMsg})
+		return
+	}
+	env.printQueue <- p.ID
+	c.JSON(200, gin.H{"message": "OK", "queue_size": len(env.printQueue)})
 }
 
 func (env *Env) getParticipant(c *gin.Context) {
@@ -345,6 +415,13 @@ func (env *Env) genPostAuthenticate(jwtSecret string) func(*gin.Context) {
 	}
 }
 
+// FakeJWTAuthMiddleware : for performance test
+func FakeJWTAuthMiddleware(c *gin.Context) {
+	c.Set("account", "admin")
+	c.Set("role", "admin")
+	c.Next()
+}
+
 // JWTAuthMiddleware : JWT Authorization Verification
 func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -358,9 +435,24 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 		)
 
 		c.Set("token", token)
+		account, ok := token.Claims.(jwt_lib.MapClaims)["Account"]
+		if !ok {
+			c.AbortWithError(500, errors.New("No Account in token"))
+			return
+		}
+		c.Set("account", account)
+		role, ok := token.Claims.(jwt_lib.MapClaims)["Role"]
+		if !ok {
+			c.AbortWithError(500, errors.New("No Role in token"))
+			return
+		}
+		c.Set("role", role)
+
 		if err != nil {
 			c.AbortWithStatus(401)
+			return
 		}
+		c.Next()
 	}
 }
 
@@ -371,7 +463,6 @@ func CORSMiddleware(c *gin.Context) {
 	c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH")
 	c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 	if c.Request.Method == "OPTIONS" {
-		log.Println("options")
 		c.AbortWithStatus(200)
 		return
 	}
@@ -391,16 +482,7 @@ var level0Role = map[string]bool{
 }
 
 func level1PermissionMiddleware(c *gin.Context) {
-	token, has := c.Get("token")
-	if !has {
-		c.AbortWithError(500, errors.New("No token in the c.Context"))
-		return
-	}
-	role, ok := token.(*jwt_lib.Token).Claims.(jwt_lib.MapClaims)["Role"]
-	if !ok {
-		c.AbortWithError(500, errors.New("No Role in token"))
-		return
-	}
+	role, _ := c.Get("role")
 	if _, ok := level0Role[role.(string)]; ok {
 		c.Next()
 		return
@@ -413,16 +495,7 @@ func level1PermissionMiddleware(c *gin.Context) {
 }
 
 func level0PermissionMiddleware(c *gin.Context) {
-	token, has := c.Get("token")
-	if !has {
-		c.AbortWithError(500, errors.New("No token in the c.Context"))
-		return
-	}
-	role, ok := token.(*jwt_lib.Token).Claims.(jwt_lib.MapClaims)["Role"]
-	if !ok {
-		c.AbortWithError(500, errors.New("No Role in token"))
-		return
-	}
+	role, _ := c.Get("role")
 	if _, ok := level0Role[role.(string)]; ok {
 		c.Next()
 		return
@@ -435,6 +508,7 @@ func GetMainEngine(env *Env, jwtSecret string) *gin.Engine {
 	router := gin.Default()
 
 	router.Use(CORSMiddleware)
+	router.Use(gin_gzip.Gzip(gin_gzip.DefaultCompression))
 
 	api := router.Group("/api")
 	{
@@ -443,9 +517,10 @@ func GetMainEngine(env *Env, jwtSecret string) *gin.Engine {
 
 		authorized := api.Group("/authorized")
 		authorized.Use(JWTAuthMiddleware(jwtSecret))
+		// authorized.Use(FakeJWTAuthMiddleware)
 		{
 			authorized.GET("/contest-standing", env.getContestStanding)
-			authorized.POST("/printer", postPrinter)
+			authorized.POST("/printer", env.postPrinter)
 			level1 := authorized.Group("/", level1PermissionMiddleware)
 			{
 				level1.GET("/ballon-status", env.listBallonStatus)
@@ -476,6 +551,7 @@ func (env *Env) updateContestStanding(resultsXMLPath string) {
 		Key:   "ContestStanding",
 		Value: b,
 	}
+	log.Println("Update ContestStanding")
 	err = env.db.SaveKV(kv)
 	if err != nil {
 		log.Println("SaveKV failed with", err)

@@ -1,7 +1,7 @@
 {
     "Server": {
         "JWTSecret": "terceSTWJ",
-        "Port": "8080",
+        "Port": ":8080",
         "Admin": {
             "Account": "admin",
             "Password": "ElPsyCongroo"
@@ -10,6 +10,10 @@
     "Storage": {
         "Dirver": "sqlite3",
         "Config": "sqlite3.db"
+    },
+    "Printer": {
+        "QueueSize": 100,
+        "PrinterNameList": []
     },
     "ResultsXMLPath": "results.xml"
 }
