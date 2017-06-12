@@ -1,8 +1,10 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/shjwudp/ACM-ICPC-api-service/model"
 	"log"
 	"os/exec"
 	"strings"
@@ -65,8 +67,13 @@ func (env *Env) PostPrinter(c *gin.Context) {
 		return
 	}
 
-	account, _ := c.Get("account")
-	p, err := env.db.SavePrintCode(account.(string), requestJSON.PrintContent)
+	raw, has := c.Get("user")
+	if !has {
+		c.AbortWithError(500, errors.New("No user in the gin.Context"))
+		return
+	}
+	user := raw.(model.User)
+	p, err := env.db.SavePrintCode(user.Account, requestJSON.PrintContent)
 	if err != nil {
 		errMsg := fmt.Sprint("SavePrintCode failed with", err)
 		c.JSON(500, gin.H{"message": errMsg})
