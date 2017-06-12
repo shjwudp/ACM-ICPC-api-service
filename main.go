@@ -5,7 +5,6 @@ import (
 	"flag"
 	gin_gzip "github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/shjwudp/ACM-ICPC-api-service/model"
 	"github.com/shjwudp/ACM-ICPC-api-service/server"
@@ -26,8 +25,50 @@ func usage() {
 	os.Exit(0)
 }
 
-// Config is configuration struct
-var Config *model.Configuration
+func initWithConf(conf model.Configuration) (*server.Env, error) {
+	db, err := model.OpenDB(conf.Storage.Dirver, conf.Storage.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	// init env
+	env := server.NewEnv(db,
+		conf.Printer.QueueSize,
+		conf.Server.JWTSecret)
+
+	initAdmin(db,
+		conf.Server.Admin.Account,
+		conf.Server.Admin.Password)
+
+	// start a goruntine to update ContestStanding
+	go func() {
+		for {
+			updateContestStanding(db, conf.ResultsXMLPath)
+			time.Sleep(time.Duration(1) * time.Second)
+		}
+	}()
+	// start a group of goruntine to deal with print task
+	for _, name := range conf.Printer.PinterNameList {
+		go env.SendPrinter(name)
+	}
+	// init ContestInfo
+	ci := model.ContestInfo{
+		StartTime:      conf.ContestInfo.StartTime,
+		GoldMedalNum:   conf.ContestInfo.GoldMedalNum,
+		SilverMedalNum: conf.ContestInfo.SilverMedalNum,
+		BronzeMedalNum: conf.ContestInfo.BronzeMedalNum,
+		Duration:       conf.ContestInfo.Duration,
+	}
+	b, err := json.Marshal(ci)
+	if err != nil {
+		return nil, err
+	}
+	err = db.SaveKV(model.KV{Key: "ContestInfo", Value: b})
+	if err != nil {
+		return nil, err
+	}
+	return env, nil
+}
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
@@ -35,7 +76,6 @@ func main() {
 	var confPath string
 	flag.StringVar(&confPath, "config", "", "Configuration file path.")
 	flag.Parse()
-
 	flag.Usage = usage
 	flag.Parse()
 	if confPath == "" {
@@ -43,43 +83,20 @@ func main() {
 	}
 
 	var err error
-	Config, err = model.ConfigurationLoad(confPath)
+	conf, err := model.ConfigurationLoad(confPath)
 	if err != nil {
 		log.Fatal("Load conf failed with", err)
 	}
-
-	db, err := model.OpenDB(Config.Storage.Dirver, Config.Storage.Config)
+	env, err := initWithConf(*conf)
 	if err != nil {
-		log.Fatal("Open db failed with", err)
-	}
-
-	// init env
-	env := server.NewEnv(
-		db,
-		Config.Printer.QueueSize,
-		Config.Server.JWTSecret)
-
-	initAdmin(db,
-		Config.Server.Admin.Account,
-		Config.Server.Admin.Password)
-
-	// start a goruntine to update ContestStanding
-	go func() {
-		for {
-			updateContestStanding(db, Config.ResultsXMLPath)
-			time.Sleep(time.Duration(1) * time.Second)
-		}
-	}()
-	// start a group of goruntine to deal with print task
-	for _, name := range Config.Printer.PinterNameList {
-		go env.SendPrinter(name)
+		log.Fatal(err)
 	}
 
 	gin.SetMode(gin.TestMode)
 	// gin.SetMode(gin.ReleaseMode)
-	router := GetMainEngine(env, Config.Server.JWTSecret)
+	router := GetMainEngine(env, conf.Server.JWTSecret)
 	s := &http.Server{
-		Addr:    Config.Server.Port,
+		Addr:    conf.Server.Port,
 		Handler: router,
 	}
 	s.ListenAndServe()
@@ -97,8 +114,8 @@ func GetMainEngine(env *server.Env, JWTSecret string) *gin.Engine {
 		api.POST("/authenticate", env.Authenticate)
 
 		authorized := api.Group("/authorized")
-		authorized.Use(middleware.JWTAuthMiddleware(JWTSecret))
-		// authorized.Use(FakeJWTAuthMiddleware)
+		// authorized.Use(middleware.JWTAuthMiddleware(JWTSecret))
+		authorized.Use(middleware.FakeJWTAuthMiddleware)
 		{
 			authorized.GET("/contest-standing", env.GetContestStanding)
 			authorized.POST("/printer", env.PostPrinter)
@@ -110,6 +127,8 @@ func GetMainEngine(env *server.Env, JWTSecret string) *gin.Engine {
 				{
 					level0.GET("/participant", env.ListUser)
 					level0.POST("/participant", env.PostUserList)
+					level0.GET("/contest-info", env.GetContestInfo)
+					level0.POST("/contest-info", env.SaveContestInfo)
 				}
 			}
 		}
@@ -123,7 +142,11 @@ func updateContestStanding(db model.Datastore, resultsXMLPath string) {
 		log.Println("ParseResultXML failed with", err)
 		return
 	}
-	b, _ := json.Marshal(cs)
+	b, err := json.Marshal(cs)
+	if err != nil {
+		log.Println("json.Marshal failed with", err)
+		return
+	}
 	kv := model.KV{
 		Key:   "ContestStanding",
 		Value: b,
@@ -136,11 +159,11 @@ func updateContestStanding(db model.Datastore, resultsXMLPath string) {
 	}
 }
 
-func initAdmin(db model.Datastore, account, password string) {
+func initAdmin(db model.Datastore, account, password string) error {
 	admin := model.User{
 		Account:  account,
 		Password: password,
 		Role:     "admin",
 	}
-	db.SaveUser(admin)
+	return db.SaveUser(admin)
 }

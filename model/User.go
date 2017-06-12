@@ -39,7 +39,11 @@ func (db *DB) ListUser() ([]User, error) {
 	return users, err
 }
 
+// SaveUser save user in db
 func (db *DB) SaveUser(user User) error {
+	if user.Role == "" {
+		user.Role = "normal"
+	}
 	var saveSQL = `
 	INSERT OR REPLACE INTO user
 	( account, password, role, display_name, nick_name,

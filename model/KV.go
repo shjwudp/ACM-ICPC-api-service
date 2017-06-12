@@ -15,6 +15,7 @@ func (db *DB) GetKV(key string) (*KV, error) {
 	return kv, err
 }
 
+// SaveKV save kv in db
 func (db *DB) SaveKV(kv KV) error {
 	_, err := db.Exec("INSERT OR REPLACE INTO kv VALUES($1, $2)", kv.Key, kv.Value)
 	return err
