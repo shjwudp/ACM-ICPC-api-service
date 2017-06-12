@@ -15,6 +15,7 @@ type Configuration struct {
 			Account  string
 			Password string
 		}
+		IsTestMode bool
 	}
 	// use sqlite3
 	Storage struct {

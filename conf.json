@@ -5,7 +5,8 @@
         "Admin": {
             "Account": "admin",
             "Password": "ElPsyCongroo"
-        }
+        },
+        "IsTestMode": true
     },
     "Storage": {
         "Dirver": "sqlite3",

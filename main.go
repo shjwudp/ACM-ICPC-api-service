@@ -92,9 +92,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	gin.SetMode(gin.TestMode)
-	// gin.SetMode(gin.ReleaseMode)
-	router := GetMainEngine(env, conf.Server.JWTSecret)
+	if conf.Server.IsTestMode {
+		gin.SetMode(gin.TestMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	router := GetMainEngine(env, conf.Server.JWTSecret, conf.Server.IsTestMode)
 	s := &http.Server{
 		Addr:    conf.Server.Port,
 		Handler: router,
@@ -103,7 +106,7 @@ func main() {
 }
 
 // GetMainEngine : Main Engine
-func GetMainEngine(env *server.Env, JWTSecret string) *gin.Engine {
+func GetMainEngine(env *server.Env, JWTSecret string, IsTestMode bool) *gin.Engine {
 	router := gin.Default()
 
 	router.Use(middleware.Options)
@@ -114,8 +117,11 @@ func GetMainEngine(env *server.Env, JWTSecret string) *gin.Engine {
 		api.POST("/authenticate", env.Authenticate)
 
 		authorized := api.Group("/authorized")
-		// authorized.Use(middleware.JWTAuthMiddleware(JWTSecret))
-		authorized.Use(middleware.FakeJWTAuthMiddleware)
+		if IsTestMode {
+			authorized.Use(middleware.FakeJWTAuthMiddleware)
+		} else {
+			authorized.Use(middleware.JWTAuthMiddleware(JWTSecret))
+		}
 		{
 			authorized.GET("/contest-standing", env.GetContestStanding)
 			authorized.POST("/printer", env.PostPrinter)
