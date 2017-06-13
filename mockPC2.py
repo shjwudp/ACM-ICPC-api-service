@@ -7,6 +7,7 @@ import random
 import datetime
 import time
 import xml.etree.ElementTree as ET
+from pytz import timezone
 
 
 SCRIPT_PATH = os.path.split(os.path.realpath(sys.argv[0]))[0]
@@ -130,8 +131,13 @@ def mock(results_xml):
             wrong(psi, team, problem_list)
 
     retry_rank(team_list)
-    standings_header.set(
-        'currentDate', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    time_format = '%a %b %d %H:%M:%S %Z %Y'
+    last = datetime.datetime.strptime(
+        standings_header.get('currentDate'),
+        time_format,
+    ).replace(tzinfo=timezone('CST6CDT'))
+    now = last + datetime.timedelta(seconds=int(time.time() - START_TIME))
+    standings_header.set('currentDate', now.strftime(time_format))
     tree.write(results_xml)
 
 

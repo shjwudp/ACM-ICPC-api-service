@@ -15,7 +15,8 @@ type Datastore interface {
 
 	SaveUser(User) error
 
-	ListUser() ([]User, error)
+	// AllUser get all of user
+	AllUser() ([]User, error)
 
 	// GetKV get KV by Key
 	GetKV(string) (*KV, error)
@@ -34,6 +35,15 @@ type Datastore interface {
 
 	// UpdatePrintCode update PrintCode(Account, Code, IsDown) WHERE ID = p.ID
 	UpdatePrintCode(p PrintCode) error
+
+	// GetContestEventSeq get ContestEvent by TeamKey
+	GetContestEventSeq(teamKey string) ([]ContestEvent, error)
+
+	// GetLatestContestEvent get latest ContestEvent by TeamKey & ProblemIndex
+	GetLatestContestEvent(teamKey string, problemIndex int) (*ContestEvent, error)
+
+	// SaveContestEvent save ContestEvent in db
+	SaveContestEvent(ce ContestEvent) error
 }
 
 // DB is an implementation of a store.Store built on top
@@ -65,7 +75,8 @@ func OpenDBTest() (*DB, error) {
 }
 
 var migrateSQL = `
-PRAGMA cache_size = 400;
+PRAGMA read_uncommitted = 1;
+
 CREATE TABLE IF NOT EXISTS ballon_status (
     team_key TEXT NOT NULL,
     problem_index INTEGER NOT NULL,
@@ -83,8 +94,8 @@ CREATE TABLE IF NOT EXISTS user (
     display_name TEXT NOT NULL DEFAULT '',
     nick_name TEXT NOT NULL DEFAULT '',
     school TEXT NOT NULL DEFAULT '',
-    is_star TEXT NOT NULL DEFAULT '',
-    is_girl TEXT NOT NULL DEFAULT '',
+    is_star INTEGER NOT NULL DEFAULT 0,
+    is_girl INTEGER NOT NULL DEFAULT 0,
     seat_id TEXT NOT NULL DEFAULT '',
     coach TEXT NOT NULL DEFAULT '',
     player1 TEXT NOT NULL DEFAULT '',
@@ -100,4 +111,15 @@ CREATE TABLE IF NOT EXISTS print_code (
 	is_done INTEGER NOT NULL DEFAULT 0,
 	create_time INTEGER not null default (strftime('%s','now'))
 );
+CREATE TABLE IF NOT EXISTS contest_event (
+	time_stamp INTEGER NOT NULL,
+	team_key TEXT NOT NULL,
+	problem_index INTEGER NOT NULL,
+	attempts INTEGER NOT NULL,
+	is_solved INTEGER NOT NULL,
+	points INTEGER NOT NULL,
+	PRIMARY KEY (time_stamp, team_key, problem_index)
+);
+CREATE INDEX IF NOT EXISTS contest_event__time_stamp__index ON contest_event(time_stamp);
+CREATE INDEX IF NOT EXISTS contest_event__team_key__index ON contest_event(team_key);
 `

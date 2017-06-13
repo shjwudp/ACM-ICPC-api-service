@@ -10,7 +10,7 @@ import (
 type Configuration struct {
 	Server struct {
 		JWTSecret string
-		Port      string
+		Addr      string
 		Admin     struct {
 			Account  string
 			Password string

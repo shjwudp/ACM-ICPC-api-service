@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"time"
 )
 
 // Problem part of xml
@@ -19,12 +20,13 @@ type Problem struct {
 
 // StandingsHeader part of xml
 type StandingsHeader struct {
-	CurrentDate       string    `xml:"currentDate,attr"`
-	ProblemCount      int       `xml:"problemCount,attr"`
-	ProblemsAttempted int       `xml:"problemsAttempted,attr"`
-	TotalAttempts     int       `xml:"totalAttempts,attr"`
-	TotalSolved       int       `xml:"totalSolved,attr"`
-	Problems          []Problem `xml:"problem"`
+	CurrentTimeStamp  int64
+	CurrentDate       string     `xml:"currentDate,attr"`
+	ProblemCount      int        `xml:"problemCount,attr"`
+	ProblemsAttempted int        `xml:"problemsAttempted,attr"`
+	TotalAttempts     int        `xml:"totalAttempts,attr"`
+	TotalSolved       int        `xml:"totalSolved,attr"`
+	Problems          []*Problem `xml:"problem"`
 }
 
 // ProblemSummaryInfo part of xml
@@ -40,39 +42,48 @@ type ProblemSummaryInfo struct {
 
 // TeamStanding part of xml
 type TeamStanding struct {
-	FirstSolved         int                  `xml:"firstSolved,attr"`
-	Index               int                  `xml:"index,attr"`
-	LastSolved          int                  `xml:"lastSolved,attr"`
-	Points              int                  `xml:"points,attr"`
-	ProblemsAttempted   int                  `xml:"problemsAttempted,attr"`
-	Rank                int                  `xml:"rank,attr"`
-	Solved              int                  `xml:"solved,attr"`
-	TeamName            string               `xml:"teamName,attr"`
-	TeamKey             string               `xml:"teamKey,attr"`
-	TotalAttempts       int                  `xml:"totalAttempts,attr"`
-	ProblemSummaryInfos []ProblemSummaryInfo `xml:"problemSummaryInfo"`
+	FirstSolved         int                   `xml:"firstSolved,attr"`
+	Index               int                   `xml:"index,attr"`
+	LastSolved          int                   `xml:"lastSolved,attr"`
+	Points              int                   `xml:"points,attr"`
+	ProblemsAttempted   int                   `xml:"problemsAttempted,attr"`
+	Rank                int                   `xml:"rank,attr"`
+	Solved              int                   `xml:"solved,attr"`
+	TeamName            string                `xml:"teamName,attr"`
+	TeamKey             string                `xml:"teamKey,attr"`
+	TotalAttempts       int                   `xml:"totalAttempts,attr"`
+	ProblemSummaryInfos []*ProblemSummaryInfo `xml:"problemSummaryInfo"`
+	NickName            string
+	School              string
+	IsStar              bool
+	IsGirl              bool
+	Coach               string
+	Player1             string
+	Player2             string
+	Player3             string
+	SeatID              string
 }
 
 // ContestStanding part of xml
 type ContestStanding struct {
 	XMLName         xml.Name        `xml:"contestStandings"`
 	StandingsHeader StandingsHeader `xml:"standingsHeader"`
-	TeamStandings   []TeamStanding  `xml:"teamStanding"`
+	TeamStandings   []*TeamStanding `xml:"teamStanding"`
 }
 
-type problemArray []Problem
+type problemArray []*Problem
 
 func (a problemArray) Len() int           { return len(a) }
 func (a problemArray) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a problemArray) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-type problemSummaryInfoArray []ProblemSummaryInfo
+type problemSummaryInfoArray []*ProblemSummaryInfo
 
 func (a problemSummaryInfoArray) Len() int           { return len(a) }
 func (a problemSummaryInfoArray) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a problemSummaryInfoArray) Less(i, j int) bool { return a[i].Index < a[j].Index }
 
-type teamStandingArray []TeamStanding
+type teamStandingArray []*TeamStanding
 
 func (a teamStandingArray) Len() int           { return len(a) }
 func (a teamStandingArray) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -89,14 +100,22 @@ func ParseResultXML(resultXMLPath string) (*ContestStanding, error) {
 	if err != nil {
 		return nil, err
 	}
-	contestStanding := new(ContestStanding)
-	err = xml.Unmarshal([]byte(data), &contestStanding)
+	cs := new(ContestStanding)
+	err = xml.Unmarshal([]byte(data), &cs)
 	if err != nil {
 		return nil, err
 	}
-	sort.Sort(problemArray(contestStanding.StandingsHeader.Problems))
-	sort.Sort(teamStandingArray(contestStanding.TeamStandings))
-	problemList := contestStanding.StandingsHeader.Problems
+	time, err := time.Parse(
+		"Mon Jan 2 15:04:05 MST 2006",
+		cs.StandingsHeader.CurrentDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	cs.StandingsHeader.CurrentTimeStamp = time.Unix()
+	sort.Sort(problemArray(cs.StandingsHeader.Problems))
+	sort.Sort(teamStandingArray(cs.TeamStandings))
+	problemList := cs.StandingsHeader.Problems
 	for _, p := range problemList {
 		tmp := p.ID
 		for tmp > 0 {
@@ -104,8 +123,8 @@ func ParseResultXML(resultXMLPath string) (*ContestStanding, error) {
 			tmp /= 26
 		}
 	}
-	problems := contestStanding.StandingsHeader.Problems
-	for _, t := range contestStanding.TeamStandings {
+	problems := cs.StandingsHeader.Problems
+	for _, t := range cs.TeamStandings {
 		sort.Sort(problemSummaryInfoArray(t.ProblemSummaryInfos))
 		for _, p := range t.ProblemSummaryInfos {
 			if p.IsSolved && p.SolutionTime == problems[p.Index-1].BestSolutionTime {
@@ -113,5 +132,5 @@ func ParseResultXML(resultXMLPath string) (*ContestStanding, error) {
 			}
 		}
 	}
-	return contestStanding, nil
+	return cs, nil
 }

@@ -23,8 +23,8 @@ func Test_User(t *testing.T) {
 		DisplayName: "nico",
 		NickName:    "niconiconi",
 		School:      "fofofo",
-		IsStar:      "0",
-		IsGirl:      "1",
+		IsStar:      false,
+		IsGirl:      true,
 		Coach:       "MC",
 		Player1:     "Player1",
 		Player2:     "Player2",
@@ -38,7 +38,7 @@ func Test_User(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	user.IsStar = "1"
+	user.IsStar = true
 	err = db.SaveUser(user)
 	if err != nil {
 		t.Error(err)
@@ -63,7 +63,7 @@ func Test_User(t *testing.T) {
 		t.Error("Assert q.Value == kv2.Value")
 	}
 
-	userList, err := db.ListUser()
+	userList, err := db.AllUser()
 	if err != nil {
 		t.Error(err)
 	}

@@ -99,7 +99,7 @@ func main() {
 	}
 	router := GetMainEngine(env, conf.Server.JWTSecret, conf.Server.IsTestMode)
 	s := &http.Server{
-		Addr:    conf.Server.Port,
+		Addr:    conf.Server.Addr,
 		Handler: router,
 	}
 	s.ListenAndServe()
@@ -131,7 +131,7 @@ func GetMainEngine(env *server.Env, JWTSecret string, IsTestMode bool) *gin.Engi
 				level1.PATCH("/ballon-status", env.PatchBallonStatus)
 				level0 := authorized.Group("/", middleware.Level0PermissionMiddleware)
 				{
-					level0.GET("/participant", env.ListUser)
+					level0.GET("/participant", env.AllUser)
 					level0.POST("/participant", env.PostUserList)
 					level0.GET("/contest-info", env.GetContestInfo)
 					level0.POST("/contest-info", env.SaveContestInfo)
@@ -148,6 +148,40 @@ func updateContestStanding(db model.Datastore, resultsXMLPath string) {
 		log.Println("ParseResultXML failed with", err)
 		return
 	}
+	allUser, err := db.AllUser()
+	if err != nil {
+		log.Println("ParseResultXML failed with", err)
+		return
+	}
+	userMap := map[string]model.User{}
+	for _, user := range allUser {
+		userMap[user.TeamKey] = user
+	}
+
+	for _, t := range cs.TeamStandings {
+		if u, has := userMap[t.TeamKey]; has {
+			t.NickName = u.NickName
+			t.School = u.School
+			t.IsStar = u.IsStar
+			t.IsGirl = u.IsGirl
+			t.Coach = u.Coach
+			t.Player1 = u.Player1
+			t.Player2 = u.Player2
+			t.Player3 = u.Player3
+			t.SeatID = u.SeatID
+		}
+		for _, p := range t.ProblemSummaryInfos {
+			db.SaveContestEvent(model.ContestEvent{
+				TimeStamp:    cs.StandingsHeader.CurrentTimeStamp,
+				TeamKey:      t.TeamKey,
+				ProblemIndex: p.Index,
+				Attempts:     p.Attempts,
+				IsSolved:     p.IsSolved,
+				Points:       p.Points,
+			})
+		}
+	}
+
 	b, err := json.Marshal(cs)
 	if err != nil {
 		log.Println("json.Marshal failed with", err)

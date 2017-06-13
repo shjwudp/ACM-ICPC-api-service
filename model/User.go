@@ -8,8 +8,8 @@ type User struct {
 	DisplayName string `db:"display_name"`
 	NickName    string `db:"nick_name"`
 	School      string `db:"school"`
-	IsStar      string `db:"is_star"`
-	IsGirl      string `db:"is_girl"`
+	IsStar      bool   `db:"is_star"`
+	IsGirl      bool   `db:"is_girl"`
 	SeatID      string `db:"seat_id"`
 	Coach       string `db:"coach"`
 	Player1     string `db:"player1"`
@@ -33,7 +33,8 @@ func (db *DB) GetUserTeamKey(teamKey string) (*User, error) {
 	return user, err
 }
 
-func (db *DB) ListUser() ([]User, error) {
+// AllUser get all of user
+func (db *DB) AllUser() ([]User, error) {
 	users := []User{}
 	err := db.Select(&users, "SELECT * FROM user")
 	return users, err

@@ -12,9 +12,9 @@ import (
 	"strings"
 )
 
-// ListUser list all of User
-func (env *Env) ListUser(c *gin.Context) {
-	users, err := env.db.ListUser()
+// AllUser list all of User
+func (env *Env) AllUser(c *gin.Context) {
+	users, err := env.db.AllUser()
 	if err != nil {
 		errMsg := fmt.Sprint("List User failed with", err)
 		c.JSON(500, gin.H{"message": errMsg})
@@ -94,10 +94,18 @@ func (env *Env) PostUserList(c *gin.Context) {
 				u.School = A[i]
 			}
 			if i, ok := titleMap["isstar"]; ok {
-				u.IsStar = A[i]
+				if A[i] == "true" {
+					u.IsStar = true
+				} else {
+					u.IsStar = false
+				}
 			}
 			if i, ok := titleMap["isgirl"]; ok {
-				u.IsGirl = A[i]
+				if A[i] == "true" {
+					u.IsGirl = true
+				} else {
+					u.IsGirl = false
+				}
 			}
 			if i, ok := titleMap["seatid"]; ok {
 				u.SeatID = A[i]
