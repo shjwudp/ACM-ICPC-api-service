@@ -31,8 +31,8 @@ conf.json说明：
             "Account": "admin",         \\管理员账号
             "Password": "ElPsyCongroo"  \\管理员密码
         },
-        "IsTestMode": true,             \\是否为测试模式，比赛时一定要改成false，重启服务
-        "NeedAuth": false
+        "IsTestMode": true,             \\是否为测试模式，测试模式性能较差，用于DEBUG
+        "NeedAuth": false               \\是否需要验证身份，比赛是一定要改成true，重启服务
     },
     "Storage": {
         "Dirver": "sqlite3",            \\数据库名，不得改变
