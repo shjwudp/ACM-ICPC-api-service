@@ -30,11 +30,6 @@ def retry_rank(team_list):
         ]
         sort_list.append(triple)
 
-    def sort_key(A, B):
-        if A[0] != B[0]:
-            return A[0] - B[0]
-        else:
-            return A[1] - B[1]
     sort_list = sorted(sort_list,
                        key=lambda triple: triple[0] * 10000 - triple[1], reverse=True)
     rank_table = {}

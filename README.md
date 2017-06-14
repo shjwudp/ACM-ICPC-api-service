@@ -26,16 +26,19 @@ conf.json说明：
 {
     "Server": {
         "JWTSecret": "terceSTWJ",       \\密码，随机一个64位的随机密码串就好
-        "Port": ":8080",                \\端口号，不推荐改变
+        "Addr": ":8080",                \\端口号，不推荐改变
         "Admin": {
             "Account": "admin",         \\管理员账号
             "Password": "ElPsyCongroo"  \\管理员密码
         },
-        "IsTestMode": true              \\是否为测试模式，比赛时一定要改成false，重启服务
+        "IsTestMode": true,             \\是否为测试模式，比赛时一定要改成false，重启服务
+        "NeedAuth": false
     },
     "Storage": {
         "Dirver": "sqlite3",            \\数据库名，不得改变
-        "Config": "sqlite3.db"          \\sqlite文件名
+        "Config": "sqlite3.db",         \\sqlite文件名
+        "MaxIdleConns": 600,            \\数据库最大空闲连接数
+        "MaxOpenConns": 1000            \\数据库最大打开连接数
     },
     "Printer": {
         "QueueSize": 1000,              \\打印机队列长度
@@ -54,20 +57,23 @@ conf.json说明：
 
 
 # Usage Example
-## Fedora
+## Fedora 25
 保证以sudo前缀或者是管理员身份运行下列命令
+0. 以管理员身份运行
+```bash
+sudo su
+```
 1. 安装git, golang, sqlite3
 ```bash
-dnf install git
-dnf install golang
-dnf install sqlite3
+dnf install git golang sqlite3
 # 配置gopath，在~/.bashrc中写入GOPATH变量，可参照下面方法
 echo "GOPATH=\"/usr/share/gocode\"" >> ~/.bashrc
 source ~/.bashrc
 ```
 2. 下载代码
 ```bash
-WORK_DIR=/code/top/directory
+WORK_DIR=/home/shjwudp/workstation
+mkdir -p ${WORK_DIR}
 cd ${WORK_DIR} && git clone git@github.com:shjwudp/ACM-ICPC-api-service.git
 ```
 3. 获取go代码依赖
@@ -77,5 +83,34 @@ cd ${ACM_ICPC_api_service} && go get ./...
 ```
 4. 运行
 ```bash
-cd ${ACM-ICPC-api-service} && go build main.go && ./main --config conf.json
+cd ${ACM_ICPC_api_service} && sh -x run.sh
+```
+
+## Ubuntu 16.04 LTS
+0. 以管理员身份运行
+```bash
+sudo su
+```
+1. 安装git, golang, sqlite3
+```bash
+apt-get update
+apt-get install git golang sqlite3
+# 配置gopath，在~/.bashrc中写入GOPATH变量，可参照下面方法
+echo "GOPATH=\"/usr/share/go\"" >> ~/.bashrc
+source ~/.bashrc
+```
+2. 下载代码
+```bash
+WORK_DIR=/home/shjwudp/workstation
+mkdir -p ${WORK_DIR}
+cd ${WORK_DIR} && git clone git@github.com:shjwudp/ACM-ICPC-api-service.git
+```
+3. 获取go代码依赖
+```bash
+ACM_ICPC_api_service=${WORK_DIR}/ACM-ICPC-api-service
+cd ${ACM_ICPC_api_service} && go get ./...
+```
+4. 运行
+```bash
+cd ${ACM_ICPC_api_service} && sh -x run.sh
 ```

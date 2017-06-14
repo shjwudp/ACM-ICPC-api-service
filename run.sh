@@ -7,4 +7,4 @@ SCRIPT_DIR=$(
 )
 cd ${SCRIPT_DIR}
 
-go run main.go --config ./conf.json
+go build main.go && ./main --config ./conf.json

@@ -53,8 +53,8 @@ type DB struct {
 
 // OpenDB creates a database connection for the given driver and datasource
 // and returns a new Store.
-func OpenDB(driver, config string) (*DB, error) {
-	db, err := sqlx.Connect(driver, config)
+func OpenDB(conf StorageConfiguration) (*DB, error) {
+	db, err := sqlx.Connect(conf.Dirver, conf.Addr)
 	// db, err := sql.Open(driver, config)
 	if err != nil {
 		return nil, err
@@ -63,15 +63,20 @@ func OpenDB(driver, config string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxIdleConns(400)
-	db.SetMaxOpenConns(400)
+	db.SetMaxIdleConns(conf.MaxIdleConns)
+	db.SetMaxOpenConns(conf.MaxOpenConns)
 	db.MustExec(migrateSQL)
 	return &DB{db}, nil
 }
 
 // OpenDBTest open a temporary DB for test
 func OpenDBTest() (*DB, error) {
-	return OpenDB("sqlite3", ":memory:")
+	return OpenDB(StorageConfiguration{
+		Dirver:       "sqlite3",
+		Addr:         ":memory:",
+		MaxIdleConns: 1000,
+		MaxOpenConns: 600,
+	})
 }
 
 var migrateSQL = `

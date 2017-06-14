@@ -26,7 +26,7 @@ func usage() {
 }
 
 func initWithConf(conf model.Configuration) (*server.Env, error) {
-	db, err := model.OpenDB(conf.Storage.Dirver, conf.Storage.Config)
+	db, err := model.OpenDB(conf.Storage)
 	if err != nil {
 		return nil, err
 	}
@@ -51,15 +51,7 @@ func initWithConf(conf model.Configuration) (*server.Env, error) {
 	for _, name := range conf.Printer.PinterNameList {
 		go env.SendPrinter(name)
 	}
-	// init ContestInfo
-	ci := model.ContestInfo{
-		StartTime:      conf.ContestInfo.StartTime,
-		GoldMedalNum:   conf.ContestInfo.GoldMedalNum,
-		SilverMedalNum: conf.ContestInfo.SilverMedalNum,
-		BronzeMedalNum: conf.ContestInfo.BronzeMedalNum,
-		Duration:       conf.ContestInfo.Duration,
-	}
-	b, err := json.Marshal(ci)
+	b, err := json.Marshal(conf.ContestInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +98,7 @@ func main() {
 }
 
 // GetMainEngine : Main Engine
-func GetMainEngine(env *server.Env, JWTSecret string, IsTestMode bool) *gin.Engine {
+func GetMainEngine(env *server.Env, JWTSecret string, NeedAuth bool) *gin.Engine {
 	router := gin.Default()
 
 	router.Use(middleware.Options)
@@ -117,10 +109,10 @@ func GetMainEngine(env *server.Env, JWTSecret string, IsTestMode bool) *gin.Engi
 		api.POST("/authenticate", env.Authenticate)
 
 		authorized := api.Group("/authorized")
-		if IsTestMode {
-			authorized.Use(middleware.FakeJWTAuthMiddleware)
-		} else {
+		if NeedAuth {
 			authorized.Use(middleware.JWTAuthMiddleware(JWTSecret))
+		} else {
+			authorized.Use(middleware.FakeJWTAuthMiddleware)
 		}
 		{
 			authorized.GET("/contest-standing", env.GetContestStanding)

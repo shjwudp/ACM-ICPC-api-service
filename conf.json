@@ -6,11 +6,14 @@
             "Account": "admin",
             "Password": "ElPsyCongroo"
         },
-        "IsTestMode": true
+        "IsTestMode": true,
+        "NeedAuth": false
     },
     "Storage": {
         "Dirver": "sqlite3",
-        "Config": "sqlite3.db"
+        "Addr": "./sqlite3.db",
+        "MaxIdleConns": 600,
+        "MaxOpenConns": 1000
     },
     "Printer": {
         "QueueSize": 1000,

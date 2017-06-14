@@ -3,8 +3,15 @@ package model
 import (
 	"encoding/json"
 	"os"
-	"time"
 )
+
+// StorageConfiguration about db
+type StorageConfiguration struct {
+	Dirver       string
+	Addr         string
+	MaxIdleConns int
+	MaxOpenConns int
+}
 
 // Configuration for ACM-ICPC-api-service
 type Configuration struct {
@@ -16,24 +23,16 @@ type Configuration struct {
 			Password string
 		}
 		IsTestMode bool
+		NeedAuth   bool
 	}
 	// use sqlite3
-	Storage struct {
-		Dirver string
-		Config string
-	}
+	Storage StorageConfiguration
 	Printer struct {
 		QueueSize      int
 		PinterNameList []string
 	}
 	ResultsXMLPath string
-	ContestInfo    struct {
-		StartTime      time.Time
-		GoldMedalNum   int
-		SilverMedalNum int
-		BronzeMedalNum int
-		Duration       time.Duration
-	}
+	ContestInfo    ContestInfo
 }
 
 // ConfigurationLoad load Configuration from file

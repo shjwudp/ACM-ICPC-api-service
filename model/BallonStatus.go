@@ -8,7 +8,7 @@ type BallonStatus struct {
 	IsMarked     bool   `db:"is_marked"`
 }
 
-// GetBallonStatus get BallonStatus by TeamKey AND ProblemIndex
+// GetBallonStatus get BallonStatus by TeamKey & ProblemIndex
 func (db *DB) GetBallonStatus(teamKey string, pid int) (*BallonStatus, error) {
 	b := new(BallonStatus)
 	var selectSQL = "SELECT * FROM ballon_status WHERE team_key = $1 AND problem_index = $2"
@@ -16,6 +16,7 @@ func (db *DB) GetBallonStatus(teamKey string, pid int) (*BallonStatus, error) {
 	return b, err
 }
 
+// SaveBallonStatus save BallonStatus in db
 func (db *DB) SaveBallonStatus(b BallonStatus) error {
 	var saveSQL = `
 	INSERT OR REPLACE INTO ballon_status

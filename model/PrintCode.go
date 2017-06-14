@@ -9,6 +9,7 @@ type PrintCode struct {
 	CreateTime int64  `db:"create_time"`
 }
 
+// SavePrintCode save PrintCode in db
 func (db *DB) SavePrintCode(account, code string) (*PrintCode, error) {
 	var saveSQL = `
 	INSERT INTO print_code ( account, code )
