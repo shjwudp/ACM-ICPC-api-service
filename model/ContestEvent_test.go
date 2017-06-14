@@ -44,7 +44,7 @@ func Test_ContestEvent(t *testing.T) {
 		}
 	}
 
-	ceList, err := db.GetContestEventSeq("team1", 1)
+	ceList, err := db.GetContestEventSeq("team1")
 	if err != nil {
 		t.Fatal(err)
 	}

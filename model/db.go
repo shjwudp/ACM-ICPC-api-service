@@ -81,7 +81,6 @@ func OpenDBTest() (*DB, error) {
 
 var migrateSQL = `
 PRAGMA read_uncommitted = 1;
-
 CREATE TABLE IF NOT EXISTS ballon_status (
     team_key TEXT NOT NULL,
     problem_index INTEGER NOT NULL,
@@ -90,7 +89,8 @@ CREATE TABLE IF NOT EXISTS ballon_status (
 );
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY NOT NULL,
-    value BLOB NOT NULL DEFAULT ''
+    value BLOB NOT NULL DEFAULT '',
+	check_sum TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS user (
     account TEXT PRIMARY KEY NOT NULL,
