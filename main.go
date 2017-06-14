@@ -89,7 +89,7 @@ func main() {
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	router := GetMainEngine(env, conf.Server.JWTSecret, conf.Server.IsTestMode)
+	router := GetMainEngine(env, conf.Server.JWTSecret, conf.Server.NeedAuth)
 	s := &http.Server{
 		Addr:    conf.Server.Addr,
 		Handler: router,
