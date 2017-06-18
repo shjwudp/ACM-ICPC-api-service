@@ -12,6 +12,7 @@ import (
 
 // SendPrinter send code to printer
 func (env *Env) SendPrinter(printerName string) {
+	log.Printf("Printer-%s start-up\n", printerName)
 	errorHandler := func(id int64, err error) {
 		log.Println(err)
 		env.printQueue <- id
@@ -21,6 +22,7 @@ func (env *Env) SendPrinter(printerName string) {
 	ok := true
 	for ok {
 		if id, ok = <-env.printQueue; ok {
+			log.Println(id)
 			p, err := env.db.GetPrintCode(id)
 			if err != nil {
 				errorHandler(id, fmt.Errorf("GetPrintCode failed with %s", err))
@@ -29,8 +31,9 @@ func (env *Env) SendPrinter(printerName string) {
 			u, err := env.db.GetUserAccount(p.Account)
 			if err != nil {
 				errorHandler(id, fmt.Errorf("GetUserAccount failed with %s", err))
-				continue
+				break
 			}
+			log.Println(p)
 
 			cmd := exec.Command("lp",
 				"-d", printerName,
@@ -79,6 +82,7 @@ func (env *Env) PostPrinter(c *gin.Context) {
 		c.JSON(500, gin.H{"message": errMsg})
 		return
 	}
+	log.Println("put", p)
 	env.printQueue <- p.ID
 	c.JSON(200, gin.H{"message": "OK", "queue_size": len(env.printQueue)})
 }

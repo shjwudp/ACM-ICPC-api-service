@@ -10,7 +10,7 @@ import (
 
 // FakeJWTAuthMiddleware : for performance test
 func FakeJWTAuthMiddleware(c *gin.Context) {
-	c.Set("user", model.User{Role: "admin"})
+	c.Set("user", model.User{Account: "admin", Role: "admin"})
 	c.Next()
 }
 

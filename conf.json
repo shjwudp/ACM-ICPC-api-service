@@ -6,8 +6,9 @@
             "Account": "admin",
             "Password": "ElPsyCongroo"
         },
-        "IsTestMode": true,
-        "NeedAuth": false
+        "IsTestMode": false,
+        "NeedAuth": false,
+        "MaxAllowed": 1000
     },
     "Storage": {
         "Dirver": "sqlite3",

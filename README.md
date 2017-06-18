@@ -7,7 +7,7 @@
 
 # Usage
 
-下面是大概的使用方法，具体到代码请参照后面的 Usage Example
+下面是使用方法，具体到代码请参照后面的 Usage Example
 1. 安装git, golang, sqlite3
 2. 下载代码
 ```bash
@@ -32,7 +32,8 @@ conf.json说明：
             "Password": "ElPsyCongroo"  \\管理员密码
         },
         "IsTestMode": true,             \\是否为测试模式，测试模式性能较差，用于DEBUG
-        "NeedAuth": false               \\是否需要验证身份，比赛是一定要改成true，重启服务
+        "NeedAuth": false,              \\是否需要验证身份，比赛是一定要改成true，重启服务
+        "MaxAllowed": 1000              \\最大同时连接数
     },
     "Storage": {
         "Dirver": "sqlite3",            \\数据库名，不得改变
@@ -58,7 +59,6 @@ conf.json说明：
 
 # Usage Example
 ## Fedora 25
-保证以sudo前缀或者是管理员身份运行下列命令
 0. 以管理员身份运行
 ```bash
 sudo su

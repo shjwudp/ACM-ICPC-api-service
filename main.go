@@ -48,7 +48,7 @@ func initWithConf(conf model.Configuration) (*server.Env, error) {
 		}
 	}()
 	// start a group of goruntine to deal with print task
-	for _, name := range conf.Printer.PinterNameList {
+	for _, name := range conf.Printer.PrinterNameList {
 		go env.SendPrinter(name)
 	}
 	b, err := json.Marshal(conf.ContestInfo)
@@ -89,7 +89,10 @@ func main() {
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	router := GetMainEngine(env, conf.Server.JWTSecret, conf.Server.NeedAuth)
+	router := GetMainEngine(env,
+		conf.Server.JWTSecret,
+		conf.Server.NeedAuth,
+		conf.Server.MaxAllowed)
 	s := &http.Server{
 		Addr:    conf.Server.Addr,
 		Handler: router,
@@ -98,9 +101,10 @@ func main() {
 }
 
 // GetMainEngine : Main Engine
-func GetMainEngine(env *server.Env, JWTSecret string, NeedAuth bool) *gin.Engine {
+func GetMainEngine(env *server.Env, JWTSecret string, NeedAuth bool, MaxAllowed int) *gin.Engine {
 	router := gin.Default()
 
+	router.Use(middleware.MaxAllowed(MaxAllowed))
 	router.Use(middleware.Options)
 	router.Use(gin_gzip.Gzip(gin_gzip.DefaultCompression))
 
@@ -116,6 +120,7 @@ func GetMainEngine(env *server.Env, JWTSecret string, NeedAuth bool) *gin.Engine
 		}
 		{
 			authorized.GET("/contest-standing", env.GetContestStanding)
+			authorized.GET("/contest-info", env.GetContestInfo)
 			authorized.POST("/printer", env.PostPrinter)
 			level1 := authorized.Group("/", middleware.Level1PermissionMiddleware)
 			{
@@ -125,7 +130,6 @@ func GetMainEngine(env *server.Env, JWTSecret string, NeedAuth bool) *gin.Engine
 				{
 					level0.GET("/participant", env.AllUser)
 					level0.POST("/participant", env.PostUserList)
-					level0.GET("/contest-info", env.GetContestInfo)
 					level0.POST("/contest-info", env.SaveContestInfo)
 				}
 			}

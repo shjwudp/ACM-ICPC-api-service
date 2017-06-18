@@ -24,12 +24,13 @@ type Configuration struct {
 		}
 		IsTestMode bool
 		NeedAuth   bool
+		MaxAllowed int
 	}
 	// use sqlite3
 	Storage StorageConfiguration
 	Printer struct {
-		QueueSize      int
-		PinterNameList []string
+		QueueSize       int
+		PrinterNameList []string
 	}
 	ResultsXMLPath string
 	ContestInfo    ContestInfo
