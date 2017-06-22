@@ -42,7 +42,8 @@ func initWithConf(conf model.Configuration) (*server.Env, error) {
 
 	// start a goruntine to update ContestStanding
 	go func() {
-		for {
+		closeTime := conf.ContestInfo.StartTime.Add(conf.ContestInfo.Duration)
+		for time.Now().Before(closeTime) {
 			updateContestStanding(db, conf.ResultsXMLPath)
 			time.Sleep(time.Duration(1) * time.Second)
 		}
