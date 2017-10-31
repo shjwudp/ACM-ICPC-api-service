@@ -25,7 +25,7 @@ conf.json说明：
 ```json
 {
     "Server": {
-        "JWTSecret": "terceSTWJ",       \\密码，随机一个64位的随机密码串就好
+        "JWTSecret": "terceSTWJ",       \\加密用token，使用一个复杂的长密码串即可
         "Addr": ":8080",                \\端口号，不推荐改变
         "Admin": {
             "Account": "admin",         \\管理员账号
@@ -45,7 +45,7 @@ conf.json说明：
         "QueueSize": 1000,              \\打印机队列长度
         "PrinterNameList": []           \\打印机名，服务器配好打印机后，将打印机名填写到这里即可
     },
-    "ResultsXMLPath": "./results.xml",  \\pc2 产出的 results.xml 路径，需要正确填写
+    "ResultsXMLPath": "./results.xml",  \\pc2 产出的 results.xml 路径
     "ContestInfo": {
         "StartTime": "2017-06-10T10:20:00+08:00",   \\比赛开始时间，格式为RFC3339
         "GoldMedalNum": 3,              \\金牌数
@@ -55,7 +55,6 @@ conf.json说明：
     }
 }
 ```
-
 
 # Usage Example
 ## Fedora 25
@@ -67,7 +66,7 @@ sudo su
 ```bash
 dnf install git golang sqlite3
 # 配置gopath，在~/.bashrc中写入GOPATH变量，可参照下面方法
-echo "GOPATH=\"/usr/share/gocode\"" >> ~/.bashrc
+echo "export GOPATH=\"/usr/share/gocode\"" >> ~/.bashrc
 source ~/.bashrc
 ```
 2. 下载代码
@@ -96,7 +95,7 @@ sudo su
 apt-get update
 apt-get install git golang sqlite3
 # 配置gopath，在~/.bashrc中写入GOPATH变量，可参照下面方法
-echo "GOPATH=\"/usr/share/go\"" >> ~/.bashrc
+echo "export GOPATH=\"/usr/share/go\"" >> ~/.bashrc
 source ~/.bashrc
 ```
 2. 下载代码

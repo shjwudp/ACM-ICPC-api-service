@@ -6,6 +6,7 @@ import (
 	jwt_request "github.com/dgrijalva/jwt-go/request"
 	"github.com/gin-gonic/gin"
 	"github.com/shjwudp/ACM-ICPC-api-service/model"
+	"net/http"
 )
 
 // FakeJWTAuthMiddleware : for performance test
@@ -26,19 +27,19 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 			},
 		)
 		if err != nil {
-			c.AbortWithStatus(401)
+			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
 		c.Set("token", token)
 		account, ok := token.Claims.(jwt_lib.MapClaims)["Account"]
 		if !ok {
-			c.AbortWithError(500, errors.New("No Account in token"))
+			c.AbortWithError(http.StatusInternalServerError, errors.New("No Account in token"))
 			return
 		}
 		role, ok := token.Claims.(jwt_lib.MapClaims)["Role"]
 		if !ok {
-			c.AbortWithError(500, errors.New("No Role in token"))
+			c.AbortWithError(http.StatusInternalServerError, errors.New("No Role in token"))
 			return
 		}
 
@@ -67,7 +68,7 @@ var level0Role = map[string]bool{
 func Level1PermissionMiddleware(c *gin.Context) {
 	raw, has := c.Get("user")
 	if !has {
-		c.AbortWithError(500, errors.New("No user in the gin.Context"))
+		c.AbortWithError(http.StatusInternalServerError, errors.New("No user in the gin.Context"))
 		return
 	}
 	user := raw.(model.User)
@@ -86,7 +87,7 @@ func Level1PermissionMiddleware(c *gin.Context) {
 func Level0PermissionMiddleware(c *gin.Context) {
 	raw, has := c.Get("user")
 	if !has {
-		c.AbortWithError(500, errors.New("No user in the gin.Context"))
+		c.AbortWithError(http.StatusInternalServerError, errors.New("No user in the gin.Context"))
 		return
 	}
 	user := raw.(model.User)

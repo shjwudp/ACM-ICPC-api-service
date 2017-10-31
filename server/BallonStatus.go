@@ -16,14 +16,15 @@ func (env *Env) ListBallonStatus(c *gin.Context) {
 	kv, err := env.db.GetKV("ContestStanding")
 	if err != nil {
 		var errMsg = fmt.Sprint("Get ContestStanding failed with", err)
-		c.JSON(500, gin.H{"message": errMsg})
+		c.JSON(http.StatusInternalServerError, gin.H{"message": errMsg})
+		return
 	}
 
 	var cs model.ContestStanding
 	err = json.Unmarshal(kv.Value, &cs)
 	if err != nil {
 		var errMsg = fmt.Sprint("Json Unmarshal failed with", err)
-		c.JSON(500, gin.H{"message": errMsg})
+		c.JSON(http.StatusInternalServerError, gin.H{"message": errMsg})
 		return
 	}
 
@@ -47,7 +48,7 @@ func (env *Env) ListBallonStatus(c *gin.Context) {
 				}
 			} else if err != nil {
 				errMsg := fmt.Sprint("GetBallonStatus failed with", err)
-				c.JSON(500, gin.H{"message": errMsg})
+				c.JSON(http.StatusInternalServerError, gin.H{"message": errMsg})
 				return
 			}
 			results = append(results, map[string]interface{}{
@@ -62,8 +63,7 @@ func (env *Env) ListBallonStatus(c *gin.Context) {
 			})
 		}
 	}
-	data, _ := json.Marshal(results)
-	c.String(http.StatusOK, string(data))
+	c.JSON(http.StatusOK, results)
 }
 
 // PatchBallonStatus modify one BallonStatus
@@ -78,7 +78,7 @@ func (env *Env) PatchBallonStatus(c *gin.Context) {
 		log.Println(req)
 		if req.Action != "mark" {
 			errMsg := fmt.Sprintf("No such action=%s", req.Action)
-			c.JSON(400, gin.H{"message": errMsg})
+			c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 			return
 		}
 		err := env.db.SaveBallonStatus(model.BallonStatus{
@@ -88,11 +88,11 @@ func (env *Env) PatchBallonStatus(c *gin.Context) {
 		})
 		if err != nil {
 			errMsg := fmt.Sprintf("No such action=%s", req.Action)
-			c.JSON(400, gin.H{"message": errMsg})
+			c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 			return
 		}
-		c.JSON(200, gin.H{"message": "OK"})
+		c.JSON(http.StatusOK, gin.H{"message": "OK"})
 		return
 	}
-	c.JSON(400, gin.H{"message": fmt.Sprint("BindJSON failed with", err)})
+	c.JSON(http.StatusBadRequest, gin.H{"message": fmt.Sprint("BindJSON failed with", err)})
 }

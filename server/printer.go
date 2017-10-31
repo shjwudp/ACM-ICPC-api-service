@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shjwudp/ACM-ICPC-api-service/model"
 	"log"
+	"net/http"
 	"os/exec"
 	"strings"
 )
@@ -66,23 +67,23 @@ func (env *Env) PostPrinter(c *gin.Context) {
 	err := c.BindJSON(&requestJSON)
 	if err != nil {
 		errMsg := fmt.Sprint("BindJSON failed with", err)
-		c.JSON(400, gin.H{"message": errMsg})
+		c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 		return
 	}
 
 	raw, has := c.Get("user")
 	if !has {
-		c.AbortWithError(500, errors.New("No user in the gin.Context"))
+		c.AbortWithError(http.StatusInternalServerError, errors.New("No user in the gin.Context"))
 		return
 	}
 	user := raw.(model.User)
 	p, err := env.db.SavePrintCode(user.Account, requestJSON.PrintContent)
 	if err != nil {
 		errMsg := fmt.Sprint("SavePrintCode failed with", err)
-		c.JSON(500, gin.H{"message": errMsg})
+		c.JSON(http.StatusInternalServerError, gin.H{"message": errMsg})
 		return
 	}
 	log.Println("put", p)
 	env.printQueue <- p.ID
-	c.JSON(200, gin.H{"message": "OK", "queue_size": len(env.printQueue)})
+	c.JSON(http.StatusOK, gin.H{"message": "OK", "queue_size": len(env.printQueue)})
 }

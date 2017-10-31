@@ -45,8 +45,8 @@ func Test_PostAuthenticate(t *testing.T) {
 
 	router := GetMainEngine("JWT_Secret")
 	router.ServeHTTP(resp, req)
-	if resp.Code != 200 {
-		t.Errorf("Response code should be 200, was: %d.", resp.Code)
+	if resp.Code != http.StatusOK {
+		t.Errorf("Response code should be http.StatusOK, was: %d.", resp.Code)
 		t.Errorf("Response.Body : %v", resp.Body)
 	}
 
@@ -58,8 +58,8 @@ func Test_PostAuthenticate(t *testing.T) {
 	req, _ = http.NewRequest("POST", url, bytes.NewBuffer(b))
 	resp = httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
-	if resp.Code != 401 {
-		t.Errorf("Response code should be 401, was: %d.", resp.Code)
+	if resp.Code != http.StatusUnauthorized {
+		t.Errorf("Response code should be http.StatusUnauthorized, was: %d.", resp.Code)
 	}
 }
 
@@ -69,8 +69,8 @@ func Test_PostAuthenticate(t *testing.T) {
 
 // 	router := GetMainEngine()
 // 	router.ServeHTTP(response, request)
-// 	if response.Code != 200 {
-// 		t.Errorf("Response code should be 200, was: %d", response.Code)
+// 	if response.Code != http.StatusOK {
+// 		t.Errorf("Response code should be http.StatusOK, was: %d", response.Code)
 // 	}
 // }
 
@@ -80,7 +80,7 @@ func Test_PostAuthenticate(t *testing.T) {
 
 // 	router := GetMainEngine()
 // 	router.ServeHTTP(response, request)
-// 	if response.Code != 200 {
-// 		t.Errorf("Response code should be 200, was: %s", response.Code)
+// 	if response.Code != http.StatusOK {
+// 		t.Errorf("Response code should be http.StatusOK, was: %s", response.Code)
 // 	}
 // }

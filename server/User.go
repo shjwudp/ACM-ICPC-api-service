@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/shjwudp/ACM-ICPC-api-service/model"
@@ -17,16 +16,10 @@ func (env *Env) AllUser(c *gin.Context) {
 	users, err := env.db.AllUser()
 	if err != nil {
 		errMsg := fmt.Sprint("List User failed with", err)
-		c.JSON(500, gin.H{"message": errMsg})
+		c.JSON(http.StatusInternalServerError, gin.H{"message": errMsg})
 		return
 	}
-	data, err := json.Marshal(users)
-	if err != nil {
-		errMsg := fmt.Sprint("List User failed with", err)
-		c.JSON(500, gin.H{"message": errMsg})
-		return
-	}
-	c.String(http.StatusOK, string(data))
+	c.JSON(http.StatusOK, users)
 }
 
 // PostUserList post userlist and save them.
@@ -35,7 +28,7 @@ func (env *Env) PostUserList(c *gin.Context) {
 	file, header, err := c.Request.FormFile("uploadFile")
 	if err != nil {
 		errMsg := fmt.Sprint("Get uploadFile failed with", err)
-		c.JSON(400, gin.H{"message": errMsg})
+		c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 		return
 	}
 	filename := header.Filename
@@ -53,7 +46,7 @@ func (env *Env) PostUserList(c *gin.Context) {
 			break
 		} else if err != nil {
 			errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
-			c.JSON(400, gin.H{"message": errMsg})
+			c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 			return
 		}
 		if lineNo == 1 {
@@ -63,18 +56,18 @@ func (env *Env) PostUserList(c *gin.Context) {
 			log.Println(titleMap)
 			if _, ok := titleMap["account"]; !ok {
 				errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
-				c.JSON(400, gin.H{"message": errMsg})
+				c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 				return
 			}
 			if _, ok := titleMap["site"]; !ok {
 				errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
-				c.JSON(400, gin.H{"message": errMsg})
+				c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 				return
 			}
 		} else {
 			if len(A) != len(titleMap) {
 				errMsg := fmt.Sprintf("Read uploadFile:%d failed with %s", lineNo, err)
-				c.JSON(400, gin.H{"message": errMsg})
+				c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 				return
 			}
 			u := model.User{
@@ -125,11 +118,11 @@ func (env *Env) PostUserList(c *gin.Context) {
 			err := env.db.SaveUser(u)
 			if err != nil {
 				errMsg := fmt.Sprint("Saved user failed with", err)
-				c.JSON(400, gin.H{"message": errMsg})
+				c.JSON(http.StatusBadRequest, gin.H{"message": errMsg})
 				return
 			}
 		}
 		lineNo++
 	}
-	c.JSON(200, gin.H{"message": "OK"})
+	c.JSON(http.StatusOK, gin.H{"message": "OK"})
 }

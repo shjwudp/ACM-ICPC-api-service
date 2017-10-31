@@ -26,7 +26,7 @@ func Options(c *gin.Context) {
 	c.Header("Allow", "HEAD,GET,POST,PUT,PATCH,DELETE,OPTIONS")
 	c.Header("Content-Type", "application/json")
 	if c.Request.Method == "OPTIONS" {
-		c.AbortWithStatus(200)
+		c.AbortWithStatus(http.StatusOK)
 		return
 	}
 	c.Next()
